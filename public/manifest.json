@@ -1,0 +1,27 @@
+{
+  "short_name": "수호천사",
+  "name": "나의 수호천사: 지브리 수채화 테스트",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "64x64",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "applelogo.png",
+      "type": "image/png",
+      "sizes": "180x180"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#7aa896",
+  "background_color": "#fdfaf1"
+}
