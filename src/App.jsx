@@ -1,147 +1,190 @@
-import React, { useState } from 'react';
-import styled, { createGlobalStyle } from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
-import { questions, results } from './data';
-
-const GlobalStyle = createGlobalStyle`
-  body {
-    background-color: #fdfaf1;
-    margin: 0;
-    font-family: 'Pretendard', sans-serif;
-    color: #4a4a4a;
-  }
-`;
+import React, { useState, useEffect, useRef } from 'react';
+import styled from 'styled-components';
+import { allTests } from './data';
 
 const App = () => {
-  const [step, setStep] = useState('start'); // start, quiz, result
+  const [testKey, setTestKey] = useState('deskterior');
+  const [step, setStep] = useState('start');
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [score, setScore] = useState({ analog: 0, tech: 0 });
+  const [score, setScore] = useState({});
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // 배경음악을 위한 Ref
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    // 1. URL 파라미터 확인
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    if (id && allTests[id]) {
+      setTestKey(id);
+    }
+
+    // 2. 오디오 객체 사전 생성 (재생은 클릭 후 가능)
+    audioRef.current = new Audio('/sounds/bgm.mp3');
+    audioRef.current.loop = true;
+    audioRef.current.volume = 0.3;
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
+
+  const currentData = allTests[testKey];
+
+  // 음악 재생 제어
+  const toggleMusic = () => {
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleStart = () => {
+    // 브라우저 정책상 사용자 클릭 시점에 음악 재생 시작
+    audioRef.current.play().catch(() => console.log("자동 재생 방지됨"));
+    setIsPlaying(true);
+    setStep('quiz');
+  };
 
   const handleAnswer = (type) => {
-    setScore({ ...score, [type]: score[type] + 1 });
-    if (currentIdx + 1 < questions.length) {
+    setScore(prev => ({ ...prev, [type]: (prev[type] || 0) + 1 }));
+    if (currentIdx + 1 < currentData.questions.length) {
       setCurrentIdx(currentIdx + 1);
     } else {
       setStep('result');
     }
   };
 
-  const getResultData = () => {
-    return score.analog >= score.tech ? results["analog-high"] : results["tech-high"];
+  const getTopType = () => {
+    const aScore = score.analog || 0;
+    const tScore = score.tech || 0;
+    if (aScore >= 4) return "analog-high";
+    if (tScore >= 4) return "tech-high";
+    if (aScore > tScore) return "analog-mix";
+    if (tScore > aScore) return "tech-mix";
+    return "analog-mix";
   };
 
+  const resultData = currentData.results[getTopType()] || currentData.results[Object.keys(currentData.results)[0]];
+
   return (
-    <>
-      <GlobalStyle />
-      <Container>
-        <AnimatePresence mode="wait">
-          {step === 'start' && (
-            <StepCard key="start" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <Badge>2026 데스크테리어 가이드</Badge>
-              <Title>나의 업무 영혼 진단</Title>
-              <SubTitle>나에게 꼭 맞는 책상 위 수호천사는?</SubTitle>
-              <MainButton onClick={() => setStep('quiz')}>진단 시작하기</MainButton>
-            </StepCard>
-          )}
+    <Container>
+      {/* 배경음 제어 버튼 (우측 상단 플로팅) */}
+      <SoundToggle onClick={toggleMusic}>
+        {isPlaying ? '🎵 BGM ON' : '🔇 BGM OFF'}
+      </SoundToggle>
 
-          {step === 'quiz' && (
-            <StepCard key="quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <Progress>{currentIdx + 1} / {questions.length}</Progress>
-              <QuestionText>{questions[currentIdx].question}</QuestionText>
-              {questions[currentIdx].answers.map((ans, i) => (
-                <OptionButton key={i} onClick={() => handleAnswer(ans.type)}>
-                  {ans.text}
-                </OptionButton>
-              ))}
-            </StepCard>
+      {step === 'start' && (
+        <Card>
+          <Badge>2026 Special Test</Badge>
+          <Title>{currentData.mainTitle}</Title>
+          <SubTitle>{currentData.subTitle}</SubTitle>
+          {currentData.mainImage && (
+            <MainImage src={currentData.mainImage} alt="메인" onError={(e) => e.target.style.display = 'none'} />
           )}
+          <MainButton onClick={handleStart}>진단 시작하기</MainButton>
+        </Card>
+      )}
 
-          {step === 'result' && (
-            <ResultStep data={getResultData()} />
+      {step === 'quiz' && (
+        <Card>
+          <Progress>{currentIdx + 1} / {currentData.questions.length}</Progress>
+          {currentData.questions[currentIdx].image && (
+            <QuestionImage src={currentData.questions[currentIdx].image} alt="질문" />
           )}
-        </AnimatePresence>
-      </Container>
-    </>
+          <Question>{currentData.questions[currentIdx].question}</Question>
+          {currentData.questions[currentIdx].answers.map((ans, i) => (
+            <Option key={i} onClick={() => handleAnswer(ans.type)}>{ans.text}</Option>
+          ))}
+        </Card>
+      )}
+
+      {step === 'result' && <ResultPage data={resultData} />}
+    </Container>
   );
 };
 
-// 결과 컴포넌트 (제휴 링크 섹션 포함)
-const ResultStep = ({ data }) => (
-  <StepCard initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-    <ResultHeader>당신의 업무 영혼은...</ResultHeader>
-    <ResultTitle>"{data.title}"</ResultTitle>
-    <ResultImg src={data.image} />
-    <ResultDesc>{data.desc}</ResultDesc>
+// 결과 페이지 컴포넌트 (공유 기능 포함)
+const ResultPage = ({ data }) => {
+  const handleShare = async () => {
+    const shareData = {
+      title: '나의 진단 결과',
+      text: `나의 영혼 타입은 [${data.title}]! 당신의 결과도 확인해보세요.`,
+      url: window.location.href,
+    };
 
-    <Divider />
-    <SectionTitle>🌱 추천 데스크테리어 아이템</SectionTitle>
-    {data.products.map((p, i) => (
-      <ProductCard key={i} href={p.link} target="_blank">
-        <div style={{ textAlign: 'left' }}>
-          <strong>{p.name}</strong>
-          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#888' }}>{p.desc}</p>
-        </div>
-        <Arrow>→</Arrow>
-      </ProductCard>
-    ))}
-    <ResetButton onClick={() => window.location.reload()}>다시 테스트하기</ResetButton>
-  </StepCard>
-);
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        alert("링크가 복사되었습니다! 🔗");
+      }
+    } catch (err) {
+      console.log("공유 취소");
+    }
+  };
+
+  return (
+    <Card>
+      <ResultTitle>"{data.title}"</ResultTitle>
+      <img src={data.image} alt={data.title} style={{ width: '100%', borderRadius: '15px', marginBottom: '20px' }} />
+      <ResultDesc>{data.desc}</ResultDesc>
+
+      {/* 수호천사 앱 스타일의 '결과 공유하기' 버튼 */}
+      <ShareButton onClick={handleShare}>
+        나의 결과 공유하기 📤
+      </ShareButton>
+
+      <Divider />
+      <h4 style={{ textAlign: 'left', marginBottom: '15px' }}>🌱 추천 아이템</h4>
+      {data.products.map((p, i) => (
+        <ProductLink key={i} href={p.link} target="_blank" rel="noreferrer">
+          <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+            <strong>{p.name}</strong>
+            <small style={{ color: '#888', marginTop: '4px' }}>{p.desc}</small>
+          </div>
+          <span style={{ color: '#7aa896' }}>→</span>
+        </ProductLink>
+      ))}
+      <ResetButton onClick={() => window.location.reload()}>다시 테스트하기</ResetButton>
+    </Card>
+  );
+};
 
 /* --- 스타일 정의 --- */
-const Container = styled.div`
-  max-width: 480px;
-  margin: 0 auto;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-`;
-
-const StepCard = styled(motion.div)`
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(10px);
-  padding: 40px 30px;
-  border-radius: 30px;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.05);
-  text-align: center;
-  width: 100%;
-`;
-
-const Title = styled.h1` font-size: 28px; margin: 10px 0; color: #5a7d6e; `;
+const Container = styled.div` max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: #fdfaf1; position: relative; `;
+const Card = styled.div` background: white; padding: 40px 30px; border-radius: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); text-align: center; width: 100%; `;
 const Badge = styled.span` background: #e8f3ee; color: #5a7d6e; padding: 5px 15px; border-radius: 20px; font-size: 12px; font-weight: bold; `;
-const SubTitle = styled.p` color: #888; margin-bottom: 30px; `;
+const Title = styled.h1` font-size: 26px; color: #5a7d6e; margin: 20px 0 10px; `;
+const SubTitle = styled.p` color: #888; font-size: 15px; margin-bottom: 30px; `;
+const Question = styled.h2` font-size: 20px; margin: 20px 0 30px; line-height: 1.4; `;
+const Progress = styled.div` font-size: 13px; color: #ccc; margin-bottom: 15px; `;
+const MainButton = styled.button` background: #7aa896; color: white; border: none; padding: 15px 40px; border-radius: 50px; font-size: 18px; cursor: pointer; transition: 0.3s; &:hover { background: #5a7d6e; } `;
+const Option = styled.button` width: 100%; background: #fff; border: 2px solid #f0f0f0; padding: 15px; margin-bottom: 10px; border-radius: 15px; cursor: pointer; transition: 0.2s; &:hover { border-color: #7aa896; background: #f9fdfb; } `;
+const ResultTitle = styled.h2` font-size: 24px; color: #5a7d6e; margin-bottom: 20px; `;
+const ResultDesc = styled.p` color: #666; line-height: 1.6; margin-bottom: 20px; `;
+const Divider = styled.div` height: 1px; background: #eee; margin: 25px 0; `;
+const ProductLink = styled.a` display: flex; justify-content: space-between; align-items: center; text-decoration: none; color: #333; padding: 15px; border: 1px solid #eee; border-radius: 12px; margin-bottom: 10px; transition: 0.3s; &:hover { background: #f8fcfb; border-color: #7aa896; } `;
+const ResetButton = styled.p` font-size: 13px; color: #aaa; text-decoration: underline; cursor: pointer; margin-top: 20px; `;
 
-const MainButton = styled.button`
-  background: #7aa896; color: white; border: none; padding: 15px 40px;
-  border-radius: 50px; font-size: 18px; cursor: pointer; transition: 0.3s;
-  &:hover { background: #6a9685; transform: translateY(-2px); }
+const MainImage = styled.img` width: 100%; max-width: 400px; height: auto; border-radius: 20px; margin: 10px 0 25px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); object-fit: cover; `;
+const QuestionImage = styled.img` width: 100%; max-height: 200px; object-fit: cover; border-radius: 15px; margin: 10px 0 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); `;
+
+const ShareButton = styled.button`
+  width: 100%; background: #7aa896; color: white; border: none; padding: 16px; border-radius: 12px; 
+  font-size: 16px; font-weight: bold; cursor: pointer; margin: 20px 0; transition: 0.3s;
+  &:hover { background: #5a7d6e; transform: translateY(-2px); }
 `;
 
-const OptionButton = styled.button`
-  width: 100%; background: white; border: 2px solid #e8f3ee; padding: 18px;
-  margin-bottom: 15px; border-radius: 15px; cursor: pointer; font-size: 16px;
-  transition: 0.2s;
-  &:hover { background: #f4f9f7; border-color: #7aa896; }
+const SoundToggle = styled.button`
+  position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.7); border: 1px solid #eee;
+  padding: 5px 10px; border-radius: 20px; font-size: 11px; color: #5a7d6e; cursor: pointer; z-index: 10;
 `;
-
-const ResultTitle = styled.h2` font-size: 32px; color: #5a7d6e; margin-bottom: 20px; `;
-const ResultImg = styled.img` width: 100%; border-radius: 20px; margin-bottom: 20px; `;
-const ResultDesc = styled.p` line-height: 1.6; color: #666; margin-bottom: 30px; `;
-
-const Divider = styled.div` height: 1px; background: #eee; margin: 30px 0; `;
-const SectionTitle = styled.h3` font-size: 18px; color: #444; margin-bottom: 20px; text-align: left; `;
-
-const ProductCard = styled.a`
-  display: flex; justify-content: space-between; align-items: center;
-  text-decoration: none; color: inherit; background: white;
-  padding: 20px; border-radius: 15px; border: 1px solid #eee; margin-bottom: 12px;
-  transition: 0.3s;
-  &:hover { border-color: #7aa896; box-shadow: 0 10px 20px rgba(0,0,0,0.05); }
-`;
-
-const Arrow = styled.span` color: #7aa896; font-weight: bold; `;
-const ResetButton = styled.p` font-size: 14px; color: #aaa; text-decoration: underline; cursor: pointer; margin-top: 30px; `;
 
 export default App;
